@@ -1,0 +1,46 @@
+# GazeAlign config: MIMIC-CXR gaze-supervised classification
+# (CHF / Normal / Pneumonia, as in the original research script)
+
+data:
+  dataset: mimic_cxr
+  base_path: "./mimic_part_jpg"
+  train_dir: "train"
+  test_dir: "test"
+  gaze_dir: "gaze"
+  eye_gaze_csv: "eye_gaze.csv"      # used only for visualization overlays
+  fixations_csv: "fixations.csv"    # used for training (scanpath x, y, t)
+  classes: ["CHF", "Normal", "pneumonia"]
+  img_size: 518
+  max_scanpath_len: 200
+
+model:
+  backbone_name: "microsoft/rad-dino-maira-2"
+  embed_dim: 512
+  grid_size: 37        # 518 / 14
+  mask_heads: 4
+  mask_depth: 1
+  scanpath_d_model: 512
+
+training:
+  epochs: 70
+  batch_size: 80
+  num_negatives: 5
+  lr: 1.0e-4
+  lr_min_factor: 1.0e-7   # eta_min = lr * lr_min_factor
+  weight_decay: 0.0
+  use_amp: true
+  seed: 42
+  save_dir: "./checkpoints"
+  vis_dir: "./visualizations"
+  vis_every_epoch: true
+
+  loss_weights:
+    scan_loss: 0.5
+    cls_loss_main: 0.8     # gaze-masked-feature classification
+    cls_loss_aux: 0.2      # raw [CLS]-token classification (auxiliary)
+    inv_mask_loss: 0.3
+    mask_consistency_loss: 0.3
+    contrast_loss: 0.4
+
+eval:
+  batch_size: 80

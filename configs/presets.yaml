@@ -1,0 +1,27 @@
+# Presets for scripts/predict_single.py
+#
+# A "preset" bundles together the checkpoint, class names, and any
+# modality-specific preprocessing needed to run GazeAlign on a single
+# image + fixation CSV pair. Add a new preset here whenever you train
+# GazeAlign on a new dataset / modality.
+
+presets:
+  cxr:
+    description: "Chest X-ray, 3-class gaze-supervised classification (MIMIC-CXR)."
+    checkpoint: "checkpoints/best_model.pth"
+    classes: ["CHF", "Normal", "pneumonia"]
+    img_size: 518
+    grid_size: 37
+    is_dicom: false
+    grayscale: true
+
+  # Example second preset for a DICOM modality. Update checkpoint/classes
+  # after training on your own dataset.
+  mri:
+    description: "Low-contrast grayscale modality (e.g. prostate MRI), DICOM input."
+    checkpoint: "checkpoints/best_model_mri.pth"
+    classes: ["benign", "malignant"]
+    img_size: 518
+    grid_size: 37
+    is_dicom: true
+    grayscale: true

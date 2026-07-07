@@ -2,6 +2,13 @@
 
 **Gaze-Supervised Contrastive Learning for Medical Image Classification**
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.1%2B-ee4c2c)](https://pytorch.org/)
+[![timm](https://img.shields.io/badge/timm-1.0%2B-green)](https://github.com/huggingface/pytorch-image-models)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Demo-Space-blue)](https://huggingface.co/spaces/anonymous-IA/GazeAlign)
+[![Paper](https://img.shields.io/badge/Paper-WACV%202026-orange)](https://arxiv.org/abs/XXXX.XXXXX)
+
 GazeAlign learns to classify medical images (e.g. chest X-rays) using
 radiologists' eye-tracking scanpaths as a weak, free source of spatial
 supervision — no pixel-level masks or bounding boxes required. A frozen
@@ -141,6 +148,43 @@ result.gaze_prior               # np.ndarray [H, W] in [0, 1], raw fixation heat
 ```bash
 python scripts/train.py --config configs/mimic_cxr.yaml
 ```
+
+## Interactive Demo
+
+Try GazeAlign directly in your browser — no local installation needed:
+
+[![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Open%20Demo-Hugging%20Face-blue)](https://huggingface.co/spaces/anonymous-IA/GazeAlign)
+
+<p align="center">
+  <img src="img/Screenshot_huggingface.jpeg" width="100%">
+</p>
+
+Or run the demo locally:
+
+```bash
+pip install gradio
+python huggingface_space/app.py
+```
+
+Deploy to your own Hugging Face Space:
+
+```bash
+huggingface-cli login
+huggingface-cli repo create GazeAlign --type space --space_sdk gradio
+git clone https://huggingface.co/spaces/anonymous-IA/GazeAlign hf-space
+cp huggingface_space/* hf-space/ -r
+cd hf-space && git add -A && git commit -m "GazeAlign demo" && git push
+```
+
+---
+
+## Demo Notebook
+
+`notebooks/GazeAlign_Demo.ipynb` walks through the full pipeline end to end:
+gaze heatmap construction, prototype initialization, the recurrent
+refinement loop step by step, and final mask visualization. It ships with
+a synthetic toy example and requires no dataset download to run.
+
 
 Expects a dataset directory laid out as:
 

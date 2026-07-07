@@ -15,7 +15,14 @@ from .losses import (
     multi_match_loss,
 )
 from .engine import GazeAlignModel, build_scanpath_pool
-from .utils import get_device, load_config, set_seed, unwrap
+from .utils import (
+    get_device,
+    load_config,
+    load_gaze_checkpoint,
+    load_submodule_state,
+    set_seed,
+    unwrap,
+)
 from .gaze import fixation_heatmap, get_scanpath, load_fixation_csv, scanpath_patch_heatmap
 from .datasets import MimicGazeDataset, build_dataset, build_transform, collect_images, gaze_collate_fn
 from .metrics import compute_classification_metrics, compute_fixation_metrics, dice_score, iou_score
@@ -26,6 +33,8 @@ __all__ = [
     "build_scanpath_pool",
     "get_device",
     "load_config",
+    "load_gaze_checkpoint",
+    "load_submodule_state",
     "set_seed",
     "unwrap",
     "GazeClassifier",

@@ -57,6 +57,29 @@ Requirements: Python ≥ 3.10 · PyTorch ≥ 2.1 · transformers ≥ 4.40 · tim
 
 ---
 
+## Pretrained Weights
+
+Model checkpoints are **not** committed to the repo (they are ~600 MB, over
+GitHub's file-size limit, and `checkpoints/` is git-ignored). Download the
+weights and place them where the preset expects them:
+
+```
+GazeAlign/
+└── checkpoints/
+    └── best_model_CXR.pth      # ← the chest X-ray checkpoint
+```
+
+The `cxr` preset in [`configs/presets.yaml`](configs/presets.yaml) points at
+`checkpoints/best_model_CXR.pth`. To use a different file, edit that path or
+add a new preset.
+
+Checkpoint loading is format-tolerant: both checkpoints written by
+`scripts/train.py` and those from the original research script (DataParallel
+`module.` prefixes, legacy key names) are accepted automatically — see
+`GazeAlign.utils.load_gaze_checkpoint`.
+
+---
+
 ## Quick Start
 
 ### Command-line (single image)
@@ -87,6 +110,10 @@ saves:
 - `output_mask.png` — the model's learned gaze-conditioned attention mask
 - `output_mask_overlay.png` — the mask blended over the original image (with `--save_overlay`)
 - `output_mask_gaze_prior.png` — the raw fixation Gaussian-splat, for comparison (with `--save_overlay`)
+
+The scanpath is selected from the fixations CSV by `DICOM_ID`, which
+defaults to the stem of `--image`. If your CSV holds several images, pass
+`--dicom_id <id>` to pick one (a single-image CSV is auto-detected).
 
 To run on a new modality/dataset, add a preset to `configs/presets.yaml`
 pointing at your own checkpoint and class list, then pass
@@ -135,7 +162,7 @@ dataset without touching any code.
 ```bash
 python scripts/run_eval.py \
     --config configs/mimic_cxr.yaml \
-    --checkpoint checkpoints/best_model.pth \
+    --checkpoint checkpoints/best_model_CXR.pth \
     --split test \
     --output results.json
 ```
@@ -155,8 +182,9 @@ GazeAlign/
 │   ├── datasets.py                # MIMIC-CXR-style gaze dataset loader (+ extensible registry)
 │   ├── metrics.py                 # classification + fixation-discrimination metrics
 │   ├── visualize.py               # debug figures + overlays
-│   ├── utils.py                   # config loading, seeding
+│   ├── utils.py                   # config loading, seeding, checkpoint I/O (load_gaze_checkpoint)
 │   └── constants.py               # IMG_SIZE, GRID_SIZE, column names
+├── checkpoints/                   # model weights (git-ignored — see "Pretrained Weights")
 ├── configs/
 │   ├── mimic_cxr.yaml             # training hyperparameters for the 3-class CXR setup
 │   └── presets.yaml               # inference presets (checkpoint + classes per modality)

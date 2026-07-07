@@ -156,7 +156,7 @@ Try GazeAlign directly in your browser — no local installation needed:
 [![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Open%20Demo-Hugging%20Face-blue)](https://huggingface.co/spaces/anonymous-IA/GazeAlign)
 
 <p align="center">
-  <img src="img/Screenshot_huggingface.jpeg" width="100%">
+  <img src="assets/Screenshot_huggingface.jpeg" width="100%">
 </p>
 
 Or run the demo locally:

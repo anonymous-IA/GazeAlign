@@ -62,70 +62,6 @@ class PredictionResult:
 
 
 # ---------------------------------------------------------------------------
-# CSV loading helpers
-# ---------------------------------------------------------------------------
-
-# Column names expected in fixations.csv  (edit here if your CSV differs)
-_COL_IMAGE_ID = "image_id"
-_COL_X        = "x_pixel"
-_COL_Y        = "y_pixel"
-_COL_TIME     = "timestamp"
-_COL_DUR      = "duration"
-
-_REQUIRED_COLS = {_COL_IMAGE_ID, _COL_X, _COL_Y, _COL_TIME}
-
-
-def _load_fixations(csv_path: str | Path, image_stem: str) -> np.ndarray:
-    """
-    Load fixation rows for *image_stem* from *csv_path*.
-
-    Parameters
-    ----------
-    csv_path:
-        Path to fixations.csv.  Must have at minimum the columns defined
-        in _REQUIRED_COLS.  Extra columns are silently ignored.
-    image_stem:
-        The bare filename of the target image **without** its extension,
-        e.g. ``"0c1c6a70-a96f5b27-5d042944-6b49b3b3-fd6a8293"``.
-
-    Returns
-    -------
-    fixations : np.ndarray, shape [N, 3]
-        Each row is ``[x_pixel, y_pixel, timestamp_ms]``.
-        Sorted by timestamp ascending.
-
-    Raises
-    ------
-    ValueError
-        If the CSV is missing required columns or no rows match *image_stem*.
-    """
-    import pandas as pd
-
-    df = pd.read_csv(csv_path)
-
-    missing = _REQUIRED_COLS - set(df.columns)
-    if missing:
-        raise ValueError(
-            f"fixations.csv is missing required column(s): {missing}\n"
-            f"Found columns: {list(df.columns)}"
-        )
-
-    # Filter to this image
-    mask = df[_COL_IMAGE_ID].astype(str) == image_stem
-    sub = df[mask].copy()
-
-    if sub.empty:
-        raise ValueError(
-            f"No fixation rows found for image_id='{image_stem}' in {csv_path}.\n"
-            f"Check that the image_id column matches the image filename stem exactly."
-        )
-
-    sub = sub.sort_values(_COL_TIME)
-    fixations = sub[[_COL_X, _COL_Y, _COL_TIME]].to_numpy(dtype=np.float32)
-    return fixations
-
-
-# ---------------------------------------------------------------------------
 # Predictor class
 # ---------------------------------------------------------------------------
 
@@ -137,10 +73,40 @@ class GazeAlignPredictor:
     when you already have a loaded model and class list.
     """
 
-    def __init__(self, model: torch.nn.Module, classes: list[str], device: str = "cpu"):
-        self.model   = model.eval().to(device)
-        self.classes = classes
-        self.device  = device
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        classes: list[str],
+        device: str = "cpu",
+        img_size: int = 518,
+    ):
+        from GazeAlign.datasets import build_transform  # noqa: PLC0415
+
+        self.model     = model.eval().to(device)
+        self.classes   = classes
+        self.device    = device
+        self.img_size  = img_size
+        # Same preprocessing used during training (resize + grayscale->3ch),
+        # so single-image inference matches how the checkpoint was trained.
+        self.transform = build_transform(img_size)
+
+    # Expose the underlying sub-modules directly (used by the HF Space demo
+    # and any code that wants to run the pipeline stage-by-stage).
+    @property
+    def image_encoder(self):
+        return self.model.image_encoder
+
+    @property
+    def scanpath_encoder(self):
+        return self.model.scanpath_encoder
+
+    @property
+    def mask_generator(self):
+        return self.model.mask_generator
+
+    @property
+    def classifier(self):
+        return self.model.classifier
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -185,23 +151,52 @@ class GazeAlignPredictor:
                 f"Available presets: {available}"
             )
 
-        cfg        = presets[preset_name]
-        ckpt_path  = cfg["checkpoint"]
-        classes    = cfg["classes"]
+        cfg           = presets[preset_name]
+        ckpt_path     = cfg["checkpoint"]
+        classes       = cfg["classes"]
+        img_size      = cfg.get("img_size", 518)
+        grid_size     = cfg.get("grid_size", 37)
+        backbone_name = cfg.get("backbone_name", "microsoft/rad-dino-maira-2")
 
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        model = cls._load_model(ckpt_path, num_classes=len(classes), device=device)
-        return cls(model=model, classes=classes, device=device)
+        model = cls._load_model(
+            ckpt_path,
+            num_classes=len(classes),
+            grid_size=grid_size,
+            backbone_name=backbone_name,
+            device=device,
+        )
+        return cls(model=model, classes=classes, device=device, img_size=img_size)
 
     @staticmethod
     def _load_model(
-        ckpt_path: str | Path, num_classes: int, device: str
+        ckpt_path: str | Path,
+        num_classes: int,
+        grid_size: int,
+        backbone_name: str,
+        device: str,
     ) -> torch.nn.Module:
-        """Load GazeAlignModel from a checkpoint file."""
-        # Lazy import so the module works even before GazeAlign is installed
+        """Rebuild the five GazeAlign sub-modules and load a training checkpoint.
+
+        Checkpoints written by ``scripts/train.py`` are wrapped dicts with
+        one state-dict per sub-module (``image_encoder_state`` etc.), so we
+        construct each module first and load them individually — mirroring
+        ``scripts/run_eval.py``.
+        """
+        # Lazy imports so the module works even before GazeAlign is installed
         from GazeAlign.engine import GazeAlignModel  # noqa: PLC0415
+        from GazeAlign.backbone import DINOv3Encoder  # noqa: PLC0415
+        from GazeAlign.model import (  # noqa: PLC0415
+            ScanpathTransformer,
+            ViTMaskGenerator,
+            classifier,
+        )
+        from GazeAlign.utils import (  # noqa: PLC0415
+            load_gaze_checkpoint,
+            load_submodule_state,
+        )
 
         ckpt_path = Path(ckpt_path)
         if not ckpt_path.exists():
@@ -210,12 +205,28 @@ class GazeAlignPredictor:
                 f"Download or train a model first (see scripts/train.py)."
             )
 
-        model = GazeAlignModel(num_classes=num_classes)
-        state = torch.load(ckpt_path, map_location=device)
-        # Support checkpoints saved as plain state-dicts or wrapped dicts
-        if isinstance(state, dict) and "model_state_dict" in state:
-            state = state["model_state_dict"]
-        model.load_state_dict(state)
+        image_encoder    = DINOv3Encoder(backbone_name=backbone_name)
+        scanpath_encoder = ScanpathTransformer()
+        mask_generator   = ViTMaskGenerator(num_patches=grid_size ** 2)
+        clf              = classifier(num_classes=num_classes)
+
+        # Normalizes both refactored and original research-script checkpoints.
+        ckpt = load_gaze_checkpoint(ckpt_path, map_location=device)
+        load_submodule_state(image_encoder, ckpt["image_encoder"])
+        load_submodule_state(scanpath_encoder, ckpt["scanpath_encoder"])
+        load_submodule_state(mask_generator, ckpt["mask_generator"])
+        load_submodule_state(clf, ckpt["classifier"])
+        if "epoch" in ckpt:
+            print(f"[GazeAlign] Loaded checkpoint from epoch {ckpt['epoch']}")
+
+        model = GazeAlignModel(
+            image_encoder=image_encoder,
+            scanpath_encoder=scanpath_encoder,
+            mask_generator=mask_generator,
+            classifier=clf,
+            num_classes=num_classes,
+            grid_size=grid_size,
+        )
         return model
 
     # ------------------------------------------------------------------
@@ -226,6 +237,7 @@ class GazeAlignPredictor:
         self,
         image_path: str | Path,
         fixations_csv: str | Path,
+        dicom_id: Optional[str] = None,
     ) -> PredictionResult:
         """
         Run a full GazeAlign forward pass on one image + its fixation CSV.
@@ -235,14 +247,23 @@ class GazeAlignPredictor:
         image_path:
             Path to the input image (JPEG, PNG, …).
         fixations_csv:
-            Path to a fixations CSV.  Rows are filtered to the stem of
-            *image_path* via the ``image_id`` column.
+            Path to a MIMIC-style fixations CSV (columns ``DICOM_ID``,
+            ``X_ORIGINAL``, ``Y_ORIGINAL``, ``Time (in secs)``).
+        dicom_id:
+            Which image's scanpath to use from the CSV. Defaults to the
+            stem of *image_path*; if that id is absent and the CSV holds a
+            single ``DICOM_ID``, that one is used automatically.
 
         Returns
         -------
         PredictionResult
         """
-        from GazeAlign.gaze import build_gaze_prior  # noqa: PLC0415
+        from GazeAlign.constants import ID_COL  # noqa: PLC0415
+        from GazeAlign.gaze import (  # noqa: PLC0415
+            fixation_heatmap,
+            get_scanpath,
+            load_fixation_csv,
+        )
 
         image_path    = Path(image_path)
         fixations_csv = Path(fixations_csv)
@@ -252,33 +273,57 @@ class GazeAlignPredictor:
         if not fixations_csv.exists():
             raise FileNotFoundError(f"Fixations CSV not found: {fixations_csv}")
 
-        image_stem = image_path.stem  # e.g. "0c1c6a70-a96f5b27-5d042944-6b49b3b3-fd6a8293"
-
-        # 1. Load + preprocess image
+        # 1. Load + preprocess image (also gives us original pixel dims for
+        #    normalizing the fixation coordinates the way training did).
         img_tensor, orig_hw = self._load_image(image_path)
+        orig_h, orig_w = orig_hw
 
-        # 2. Load fixations filtered to this image
-        fixations = _load_fixations(fixations_csv, image_stem)  # [N, 3]
+        # 2. Resolve which scanpath (DICOM_ID) to use.
+        df = load_fixation_csv(str(fixations_csv))
+        ids = set(df[ID_COL].astype(str))
+        if dicom_id is None:
+            dicom_id = image_path.stem
+        if dicom_id not in ids:
+            if len(ids) == 1:
+                dicom_id = next(iter(ids))
+            else:
+                raise ValueError(
+                    f"DICOM_ID '{dicom_id}' not found in {fixations_csv}. "
+                    f"Available ids: {sorted(ids)}. "
+                    f"Pass --dicom_id to select one."
+                )
 
-        # 3. Build raw gaze prior heatmap (for visualisation / comparison)
-        gaze_prior = build_gaze_prior(
-            fixations, orig_hw, sigma_px=30
+        # 3. Build the normalized [T, 3] scanpath the model was trained on.
+        scanpath = get_scanpath(df, dicom_id, img_height=orig_h, img_width=orig_w)
+        if scanpath is None or scanpath.numel() == 0:
+            raise ValueError(f"No fixations for DICOM_ID '{dicom_id}' in {fixations_csv}.")
+        scanpath = scanpath[:200].to(self.device)  # match training truncation
+
+        # 4. Raw gaze-prior heatmap (visualization only, not used by the model).
+        fix_df = df[df[ID_COL].astype(str) == str(dicom_id)]
+        gaze_prior = fixation_heatmap(
+            fix_df, orig_h, orig_w, orig_h, orig_w
         )  # np.ndarray [H, W] in [0, 1]
 
-        # 4. Prepare fixation tensor for the model
-        fix_tensor = torch.from_numpy(fixations).unsqueeze(0).to(self.device)  # [1, N, 3]
-
-        # 5. Forward pass
+        # 5. Forward pass through the sub-modules (single-image inference: no
+        #    negatives / contrastive terms — just image + scanpath -> mask ->
+        #    gaze-masked classification, mirroring engine.forward_batch).
+        self.model.eval()
         with torch.no_grad():
-            logits, attn_mask = self.model(
-                img_tensor.unsqueeze(0).to(self.device),
-                fix_tensor,
+            _, patch_tokens, _ = self.model.image_encoder(
+                img_tensor.unsqueeze(0).to(self.device)
             )
+            _, sp_emb, _ = self.model.scanpath_encoder([scanpath])
+            patch_mask = torch.sigmoid(self.model.mask_generator(sp_emb))  # [1, g, g]
+
+            weights_pos = patch_mask.view(1, -1, 1)
+            feat_attended = (patch_tokens * weights_pos).mean(dim=1)
+            logits = self.model.classifier(feat_attended)  # [1, num_classes]
 
         probs = torch.softmax(logits[0], dim=-1).cpu().numpy()
         top_idx = int(probs.argmax())
 
-        attention_mask = attn_mask[0].cpu().numpy()  # [H, W]
+        attention_mask = patch_mask[0].cpu().numpy()  # [grid, grid]
         # Normalise to [0, 1] for display
         mn, mx = attention_mask.min(), attention_mask.max()
         if mx > mn:
@@ -296,20 +341,16 @@ class GazeAlignPredictor:
     # ------------------------------------------------------------------
 
     def _load_image(self, image_path: Path):
-        """Return (tensor [3, H, W] normalised, (orig_h, orig_w))."""
+        """Return (preprocessed tensor [3, H, W], (orig_h, orig_w)).
+
+        Uses the shared ``build_transform`` preprocessing (resize +
+        grayscale-replicated-to-3-channel) so inference matches training.
+        """
         from PIL import Image
-        from torchvision import transforms
 
         img = Image.open(image_path).convert("RGB")
         orig_hw = (img.height, img.width)
-
-        tf = transforms.Compose([
-            transforms.Resize((518, 518)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
-        ])
-        return tf(img), orig_hw
+        return self.transform(img), orig_hw
 
 
 # ---------------------------------------------------------------------------
@@ -362,9 +403,18 @@ def _parse_args() -> argparse.Namespace:
         "--fixations",
         default="examples/fixations/fixations.csv",
         help=(
-            "Path to a fixations CSV with columns: "
-            f"{_COL_IMAGE_ID}, {_COL_X}, {_COL_Y}, {_COL_TIME}. "
-            "Rows are filtered by the stem of --image."
+            "Path to a MIMIC-style fixations CSV with columns: "
+            "DICOM_ID, X_ORIGINAL, Y_ORIGINAL, Time (in secs). "
+            "The scanpath is selected by --dicom_id (default: stem of --image)."
+        ),
+    )
+    p.add_argument(
+        "--dicom_id",
+        default=None,
+        help=(
+            "DICOM_ID whose scanpath to use from the fixations CSV. "
+            "Defaults to the stem of --image; falls back to the sole id if "
+            "the CSV contains only one."
         ),
     )
     p.add_argument(
@@ -413,7 +463,7 @@ def main() -> None:
 
     image_stem = Path(args.image).stem
     print(f"[GazeAlign] Running inference on '{image_stem}' …")
-    result = predictor.predict(args.image, args.fixations)
+    result = predictor.predict(args.image, args.fixations, dicom_id=args.dicom_id)
 
     # --- Print results ---
     print(f"\n  Predicted class : {result.predicted_class}")

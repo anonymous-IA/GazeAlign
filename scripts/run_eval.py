@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from gazealign import (
+from GazeAlign import (
     DINOv3Encoder,
     GazeAlignModel,
     ScanpathTransformer,
@@ -32,9 +32,11 @@ from gazealign import (
     gaze_collate_fn,
     get_device,
     load_config,
+    load_gaze_checkpoint,
+    load_submodule_state,
 )
-from gazealign.datasets import MimicGazeDataset
-from gazealign.gaze import load_fixation_csv
+from GazeAlign.datasets import MimicGazeDataset
+from GazeAlign.gaze import load_fixation_csv
 
 
 def parse_args():
@@ -74,11 +76,12 @@ def main():
     ).to(device)
     clf = classifier(num_classes=num_classes).to(device)
 
-    ckpt = torch.load(args.checkpoint, map_location=device)
-    image_encoder.load_state_dict(ckpt["image_encoder_state"])
-    scanpath_encoder.load_state_dict(ckpt["scanpath_encoder_state"])
-    mask_generator.load_state_dict(ckpt["mask_generator_state"])
-    clf.load_state_dict(ckpt["classifier_state"])
+    # Normalizes both refactored and original research-script checkpoints.
+    ckpt = load_gaze_checkpoint(args.checkpoint, map_location=device)
+    load_submodule_state(image_encoder, ckpt["image_encoder"])
+    load_submodule_state(scanpath_encoder, ckpt["scanpath_encoder"])
+    load_submodule_state(mask_generator, ckpt["mask_generator"])
+    load_submodule_state(clf, ckpt["classifier"])
     print(f"Loaded checkpoint from epoch {ckpt.get('epoch', '?')}")
 
     gaze_align = GazeAlignModel(

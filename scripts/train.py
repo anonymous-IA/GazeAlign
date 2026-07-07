@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from gazealign import (
+from GazeAlign import (
     DINOv3Encoder,
     GazeAlignModel,
     GazePriorHeatmap,
@@ -41,9 +41,9 @@ from gazealign import (
     load_config,
     set_seed,
 )
-from gazealign.datasets import MimicGazeDataset
-from gazealign.gaze import fixation_heatmap, load_fixation_csv, scanpath_patch_heatmap
-from gazealign.visualize import patch_to_image, plot_epoch_debug
+from GazeAlign.datasets import MimicGazeDataset
+from GazeAlign.gaze import fixation_heatmap, load_fixation_csv, scanpath_patch_heatmap
+from GazeAlign.visualize import patch_to_image, plot_epoch_debug
 import cv2
 
 

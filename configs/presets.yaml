@@ -8,7 +8,7 @@
 presets:
   cxr:
     description: "Chest X-ray, 3-class gaze-supervised classification (MIMIC-CXR)."
-    checkpoint: "checkpoints/best_model.pth"
+    checkpoint: "checkpoints/best_model_CXR.pth"
     classes: ["CHF", "Normal", "pneumonia"]
     img_size: 518
     grid_size: 37

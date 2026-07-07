@@ -54,7 +54,7 @@ is produced by `scripts/run_eval.py`.
 ## Installation
 
 ```bash
-git clone https://github.com/MohammedOussamaBEN/GazeAlign.git
+git clone https://github.com/anonymous-IA/GazeAlign.git
 cd GazeAlign
 pip install -r requirements.txt
 ```
@@ -149,43 +149,6 @@ result.gaze_prior               # np.ndarray [H, W] in [0, 1], raw fixation heat
 python scripts/train.py --config configs/mimic_cxr.yaml
 ```
 
-## Interactive Demo
-
-Try GazeAlign directly in your browser — no local installation needed:
-
-[![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Open%20Demo-Hugging%20Face-blue)](https://huggingface.co/spaces/anonymous-IA/GazeAlign)
-
-<p align="center">
-  <img src="assets/Screenshot_huggingface.jpeg" width="100%">
-</p>
-
-Or run the demo locally:
-
-```bash
-pip install gradio
-python huggingface_space/app.py
-```
-
-Deploy to your own Hugging Face Space:
-
-```bash
-huggingface-cli login
-huggingface-cli repo create GazeAlign --type space --space_sdk gradio
-git clone https://huggingface.co/spaces/anonymous-IA/GazeAlign hf-space
-cp huggingface_space/* hf-space/ -r
-cd hf-space && git add -A && git commit -m "GazeAlign demo" && git push
-```
-
----
-
-## Demo Notebook
-
-`notebooks/GazeAlign_Demo.ipynb` walks through the full pipeline end to end:
-gaze heatmap construction, prototype initialization, the recurrent
-refinement loop step by step, and final mask visualization. It ships with
-a synthetic toy example and requires no dataset download to run.
-
-
 Expects a dataset directory laid out as:
 
 ```
@@ -210,6 +173,53 @@ python scripts/run_eval.py \
     --split test \
     --output results.json
 ```
+
+---
+
+## Interactive Demo
+
+Try GazeAlign directly in your browser — no local installation needed:
+
+[![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Open%20Demo-Hugging%20Face-blue)](https://huggingface.co/spaces/anonymous-IA/GazeAlign)
+
+<p align="center">
+  <img src="assets/Screenshot_huggingface.jpeg" width="100%">
+</p>
+
+The demo lets you upload an image, add a scanpath either by **clicking** on
+the image or by **uploading a fixation table** (`.csv` / `.xlsx`), then
+shows the predicted class alongside a gaze-fixation heatmap.
+
+Or run it locally:
+
+```bash
+pip install gradio
+python huggingface_space/app.py
+```
+
+Deploy to your own Hugging Face Space by pushing the **whole project** — the
+demo imports the `GazeAlign` package, `scripts/`, and `configs/`, so
+`huggingface_space/` on its own will not run:
+
+```bash
+huggingface-cli login
+git clone https://huggingface.co/spaces/anonymous-IA/GazeAlign hf-space
+cp -r GazeAlign scripts configs examples assets huggingface_space hf-space/
+# In the Space README front-matter set:  app_file: huggingface_space/app.py
+cd hf-space && git add -A && git commit -m "GazeAlign demo" && git push
+```
+
+Add the checkpoint (`checkpoints/best_model_CXR.pth`) to the Space via Git
+LFS so the model can load at launch.
+
+---
+
+## Demo Notebook
+
+`notebooks/GazeAlign_Demo.ipynb` walks through the pipeline end to end:
+fixation-heatmap construction, image + scanpath encoding, the
+gaze-conditioned attention mask, and the final classification. It ships
+with a small example and needs no dataset download to run.
 
 ---
 

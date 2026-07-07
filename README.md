@@ -27,7 +27,7 @@ Results below are from the original 3-class chest X-ray experiment
 numbers when you train on a new dataset or class set — every metric here
 is produced by `scripts/run_eval.py`.
 
-<div align=center>
+<div align="center">
 | Metric                       | Value |
 | ---------------------------- | ----- |
 | Accuracy                     | 86.92% |
